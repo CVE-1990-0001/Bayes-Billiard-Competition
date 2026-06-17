@@ -544,8 +544,10 @@
     <strong style="color:var(--white)">How to play:</strong><br>
     Each team has a billiard table (0–90 cm). A hidden white cue ball is placed at a random position.
     5 red clue balls are thrown — you see only whether each landed <strong>LEFT</strong>, <strong>RIGHT</strong>, or <strong>HIT</strong> relative to the cue.<br>
-    Each round: optionally buy more clue balls (costs €), then estimate the cue's range.
-    Narrow &amp; correct ranges earn budget; wide or wrong ranges cost 30% of budget.<br>
+    Extra clue ball cost increases on every throw globally (5, 10, 20, 40, ...).<br>
+    The cue and clue-ball positions stay fixed across rounds so you can refine ranges progressively.
+    Round 1 max range width is 60 cm, then it shrinks by 30% each round.<br>
+    Correct ranges earn more budget when they are narrower; wrong ranges cost 30% of budget.<br>
     Guess the exact position to win <strong>+200 €</strong> and end the game!
   </div>
   <button class="btn-primary" onclick="startGame()" style="margin-top:16px; width:100%; font-size:1.05em; padding:12px;">
@@ -584,14 +586,16 @@
 const BUDGET_START = 100;
 const TABLE_WIDTH  = 90;      // cm
 const INITIAL_BALLS = 5;
-const GOOD_MAX_WIDTH = 60;    // cm – wider than this → penalty
+const EXTRA_BALL_BASE_COST = 5;
+const INITIAL_MAX_RANGE_WIDTH = 60; // cm in round 1
+const RANGE_WIDTH_REDUCTION = 0.7;  // 30% reduction each round
 const BAD_BUDGET_MULT = 0.7;  // 30% reduction
 const CORRECT_GUESS_BONUS = 200;
 
 let gs = null; // game state
 
-function extraBallCost(round) {
-  return 5 * Math.pow(2, round - 1);
+function extraBallCost() {
+  return EXTRA_BALL_BASE_COST * Math.pow(2, gs.extraBallThrows);
 }
 
 function randPos() {
@@ -613,17 +617,28 @@ function genClueBalls(cuePos, count) {
   return balls;
 }
 
-function calcScore(cuePos, min, max) {
+function getRoundMaxWidth(round) {
+  return INITIAL_MAX_RANGE_WIDTH * Math.pow(RANGE_WIDTH_REDUCTION, round - 1);
+}
+
+function formatCm(value) {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function calcScore(cuePos, min, max, round) {
   const inside = cuePos >= min && cuePos <= max;
   const width  = max - min;
-  if (inside && width <= GOOD_MAX_WIDTH) {
-    const precision = (GOOD_MAX_WIDTH - width) / GOOD_MAX_WIDTH; // 0–1
+  const maxWidth = getRoundMaxWidth(round);
+  const pointRange = (min === max);
+  const exactByRange = pointRange && min === cuePos;
+  if (inside && width <= maxWidth) {
+    const precision = (maxWidth - width) / maxWidth; // 0–1
     const score = Math.round(50 + precision * 150);              // 50–200
-    const budgetGain = Math.round(score * 1.0);
-    return { score, inside, width, budgetGain, penalty: false };
+    const budgetGain = Math.round(200 * precision);              // 0–200
+    return { score, inside, width, maxWidth, budgetGain, penalty: false, pointRange, exactByRange };
   } else {
     const score = inside ? 15 : 0;
-    return { score, inside, width, budgetGain: 0, penalty: true };
+    return { score, inside, width, maxWidth, budgetGain: 0, penalty: true, pointRange, exactByRange };
   }
 }
 
@@ -646,6 +661,9 @@ function makeTeam(id, name) {
     eliminated: false,
     guessCorrect: null,
     extraBallsThisRound: 0,
+    rangeFoundExact: false,
+    exactScore: 0,
+    roundHistory: [],
   };
 }
 
@@ -655,6 +673,7 @@ function startGame() {
   gs = {
     teams: [makeTeam(0, n0), makeTeam(1, n1)],
     round: 1,
+    extraBallThrows: 0,
     phase: 'play', // play | scoring | guess | gameover
   };
   document.getElementById('setup-screen').style.display = 'none';
@@ -678,8 +697,10 @@ function beginRound() {
   gs.phase = 'play';
   gs.teams.forEach(t => {
     if (t.eliminated) return;
-    t.cuePos = randPos();
-    t.clueBalls = genClueBalls(t.cuePos, INITIAL_BALLS);
+    if (t.cuePos === null) {
+      t.cuePos = randPos();
+      t.clueBalls = genClueBalls(t.cuePos, INITIAL_BALLS);
+    }
     t.rangeMin = null; t.rangeMax = null;
     t.rangeSubmitted = false;
     t.exactGuess = null;
@@ -687,6 +708,8 @@ function beginRound() {
     t.scoreResult = null;
     t.guessCorrect = null;
     t.extraBallsThisRound = 0;
+    t.rangeFoundExact = false;
+    t.exactScore = 0;
   });
   render();
 }
@@ -694,12 +717,13 @@ function beginRound() {
 function throwExtraBall(teamId) {
   const t = gs.teams[teamId];
   if (t.eliminated || t.rangeSubmitted) return;
-  const cost = extraBallCost(gs.round);
+  const cost = extraBallCost();
   if (t.budget < cost) {
     alert(`Not enough budget! Extra ball costs €${cost.toFixed(2)} but ${t.name} only has €${t.budget.toFixed(2)}.`);
     return;
   }
   t.budget -= cost;
+  gs.extraBallThrows++;
   t.extraBallsThisRound++;
   const ball = { pos: randPos(), indicator: null };
   ball.indicator = getIndicator(ball.pos, t.cuePos);
@@ -719,7 +743,13 @@ function submitRange(teamId) {
 
   if (isNaN(minV) || isNaN(maxV)) { alert('Please enter both minimum and maximum values.'); return; }
   if (minV < 0 || maxV > TABLE_WIDTH) { alert(`Range must be within 0 and ${TABLE_WIDTH} cm.`); return; }
-  if (minV >= maxV) { alert('Minimum must be less than maximum.'); return; }
+  if (minV > maxV) { alert('Minimum must be less than or equal to maximum.'); return; }
+  const width = maxV - minV;
+  const maxWidth = getRoundMaxWidth(gs.round);
+  if (width > maxWidth) {
+    alert(`In round ${gs.round}, range width must be at most ${formatCm(maxWidth)} cm.`);
+    return;
+  }
 
   t.rangeMin = minV;
   t.rangeMax = maxV;
@@ -737,12 +767,20 @@ function doScoring() {
   gs.phase = 'scoring';
   const active = gs.teams.filter(t => !t.eliminated);
   active.forEach(t => {
-    const r = calcScore(t.cuePos, t.rangeMin, t.rangeMax);
+    const r = calcScore(t.cuePos, t.rangeMin, t.rangeMax, gs.round);
     t.scoreResult = r;
+    t.rangeFoundExact = r.exactByRange;
     if (r.penalty) {
       t.budget = Math.max(0, Math.floor(t.budget * BAD_BUDGET_MULT * 100) / 100);
     } else {
       t.budget = Math.round((t.budget + r.budgetGain) * 100) / 100;
+    }
+    if (t.rangeFoundExact) {
+      t.exactScore = CORRECT_GUESS_BONUS;
+      t.guessSubmitted = true;
+      t.guessCorrect = true;
+      t.exactGuess = t.rangeMin;
+      t.budget = Math.round((t.budget + CORRECT_GUESS_BONUS) * 100) / 100;
     }
   });
   // Check eliminations and fire bust animation for newly eliminated teams
@@ -765,11 +803,15 @@ function doScoring() {
 function proceedToGuess() {
   gs.phase = 'guess';
   render();
+  const active = gs.teams.filter(x => !x.eliminated);
+  if (active.every(x => x.guessSubmitted)) {
+    setTimeout(resolveRound, 300);
+  }
 }
 
 function submitGuess(teamId) {
   const t = gs.teams[teamId];
-  if (t.eliminated || t.guessSubmitted) return;
+  if (t.eliminated || t.guessSubmitted || t.rangeFoundExact) return;
   const el = document.getElementById(`guess-input-${teamId}`);
   const v  = parseInt(el.value, 10);
   if (isNaN(v) || v < 0 || v > TABLE_WIDTH) {
@@ -779,6 +821,7 @@ function submitGuess(teamId) {
   t.exactGuess = v;
   t.guessSubmitted = true;
   t.guessCorrect = (v === t.cuePos);
+  t.exactScore = t.guessCorrect ? CORRECT_GUESS_BONUS : 0;
   if (t.guessCorrect) {
     t.budget = Math.round((t.budget + CORRECT_GUESS_BONUS) * 100) / 100;
   }
@@ -790,25 +833,56 @@ function submitGuess(teamId) {
   }
 }
 
-function resolveRound() {
-  // Check for correct guesses (among non-eliminated teams)
-  const correctGuessers = gs.teams.filter(t => !t.eliminated && t.guessCorrect);
+function recordRoundHistory() {
+  gs.teams.forEach(t => {
+    if (t.rangeMin === null || t.rangeMax === null || !t.scoreResult) return;
+    if (t.roundHistory.some(h => h.round === gs.round)) return;
+    const guessMethod = t.rangeFoundExact ? 'Range point' : (t.guessSubmitted ? 'Guess input' : null);
+    t.roundHistory.push({
+      round: gs.round,
+      rangeMin: t.rangeMin,
+      rangeMax: t.rangeMax,
+      rangeScore: t.scoreResult.score,
+      rangePenalty: t.scoreResult.penalty,
+      guessValue: guessMethod ? t.exactGuess : null,
+      guessMethod,
+      guessCorrect: !!(t.rangeFoundExact || t.guessCorrect),
+      guessScore: t.exactScore || 0,
+      budgetAfter: t.budget
+    });
+  });
+}
 
+function resolveRound() {
   // Re-check eliminations in case budget dropped to 0 after guess bonus edge cases
   gs.teams.forEach(t => {
     if (!t.eliminated && t.budget <= 0) t.eliminated = true;
   });
+  recordRoundHistory();
+
+  // Any exact find by range point (min=max) or guess
+  const exactFinders = gs.teams.filter(t => !t.eliminated && (t.rangeFoundExact || t.guessCorrect));
 
   const stillAlive = gs.teams.filter(t => !t.eliminated);
 
-  if (correctGuessers.length > 0) {
-    // End game – guessers win
-    endGame(correctGuessers.map(t => t.id), 'correct_guess');
+  if (stillAlive.length === 0) {
+    endGame([], 'both_bust');
     return;
   }
 
-  if (stillAlive.length === 0) {
-    endGame([], 'both_bust');
+  if (exactFinders.length > 0) {
+    if (exactFinders.length === 2) {
+      const [a, b] = exactFinders;
+      if (a.budget > b.budget) {
+        endGame([a.id], 'higher_budget_tiebreak');
+      } else if (b.budget > a.budget) {
+        endGame([b.id], 'higher_budget_tiebreak');
+      } else {
+        endGame(exactFinders.map(t => t.id), 'exact_tie');
+      }
+    } else {
+      endGame([exactFinders[0].id], 'exact_find');
+    }
     return;
   }
 
@@ -835,7 +909,7 @@ function endGame(winnerIds, reason) {
     html += `<div style="font-size:3em;margin:12px;animation:bustFlash 0.5s ease-in-out 4;">💸</div>`;
   } else if (winnerIds.length === 2) {
     html += `<h2>🎉 Both Teams Win!</h2>`;
-    html += `<p style="color:var(--text-dim);margin-top:10px;">Both teams guessed the exact position — impressive!</p>`;
+    html += `<p style="color:var(--text-dim);margin-top:10px;">Both teams found the exact cue position in the same round with equal effective budgets.</p>`;
     html += winnerIds.map(id => {
       const t = gs.teams[id];
       return `<div class="winner-name winner-name-${id}">🏆 ${escHtml(t.name)}</div>`;
@@ -846,8 +920,10 @@ function endGame(winnerIds, reason) {
     const l = gs.teams[1 - winnerIds[0]];
     html += `<h2>🏆 Winner!</h2>`;
     html += `<div class="winner-name winner-name-${w.id}">🎱 ${escHtml(w.name)}</div>`;
-    if (reason === 'correct_guess') {
-      html += `<p style="color:#69f0ae;margin-top:8px;">Correct exact position guess! <strong>+€${CORRECT_GUESS_BONUS}</strong></p>`;
+    if (reason === 'exact_find') {
+      html += `<p style="color:#69f0ae;margin-top:8px;">Exact cue position found this round.</p>`;
+    } else if (reason === 'higher_budget_tiebreak') {
+      html += `<p style="color:#69f0ae;margin-top:8px;">Both teams found the exact position this round. Higher effective budget wins the tiebreak.</p>`;
     } else if (reason === 'opponent_bust') {
       html += `<p style="color:var(--warn);margin-top:8px;">${escHtml(l.name)} ran out of budget. <span style="animation:bustFlash 0.5s ease-in-out 3;display:inline-block;">💸</span></p>`;
     }
@@ -890,9 +966,12 @@ function renderHeader() {
     guess:   'Final guess — enter the exact cue ball position!',
   };
   document.getElementById('phase-label').textContent = phaseMap[gs.phase] || '';
-  const cost = extraBallCost(gs.round);
+  const cost = extraBallCost();
+  const maxWidth = getRoundMaxWidth(gs.round);
   document.getElementById('ball-cost-label').textContent =
-    gs.phase === 'play' ? `Extra clue ball cost this round: €${cost.toFixed(2)}` : '';
+    gs.phase === 'play'
+      ? `Next extra clue ball: €${cost.toFixed(2)} • Max range width: ${formatCm(maxWidth)} cm`
+      : '';
 }
 
 function renderTeams() {
@@ -920,7 +999,7 @@ function buildTeamPanel(t) {
 
   if (t.eliminated) {
     div.innerHTML += `<div class="eliminated-banner">💸 Eliminated — Budget exhausted</div>`;
-    // Add bust overlay briefly (already eliminated)
+    div.appendChild(buildRoundHistory(t));
     return div;
   }
 
@@ -940,6 +1019,8 @@ function buildTeamPanel(t) {
     div.appendChild(buildScoringResult(t)); // show previous score
     div.appendChild(buildGuessControls(t));
   }
+
+  div.appendChild(buildRoundHistory(t));
 
   return div;
 }
@@ -977,8 +1058,8 @@ function buildTableVisual(t) {
     rulerC.appendChild(band);
   }
 
-  // Clue ball markers: only show positions AFTER team has submitted their exact guess
-  const revealBalls = t.guessSubmitted;
+  // Keep exact positions hidden during the game; only indicators are shown.
+  const revealBalls = false;
   if (revealBalls) {
     t.clueBalls.forEach(b => {
       const m = document.createElement('div');
@@ -990,8 +1071,7 @@ function buildTableVisual(t) {
     });
   }
 
-  // Cue ball: only revealed after team submits exact guess
-  const showCue = t.guessSubmitted;
+  const showCue = false;
   if (showCue) {
     const cm = document.createElement('div');
     cm.className = 'cue-ball-marker';
@@ -1015,7 +1095,6 @@ function buildTableVisual(t) {
         Range: ${t.rangeMin}–${t.rangeMax} cm (width: ${t.rangeMax - t.rangeMin} cm)
       </div>`;
   }
-
   return wrap;
 }
 
@@ -1052,7 +1131,8 @@ function buildPlayControls(t) {
     return div;
   }
 
-  const cost = extraBallCost(gs.round);
+  const cost = extraBallCost();
+  const maxWidth = getRoundMaxWidth(gs.round);
   const canAffordBall = t.budget >= cost;
 
   div.innerHTML = `
@@ -1066,10 +1146,13 @@ function buildPlayControls(t) {
     <div class="section-title">Estimate cue ball range</div>
     <div class="range-row">
       <label>Min:</label>
-      <input type="number" id="range-min-${t.id}" min="0" max="${TABLE_WIDTH}" placeholder="0" value="${t.rangeMin ?? ''}">
+      <input type="number" id="range-min-${t.id}" min="0" max="${TABLE_WIDTH}" step="1" placeholder="0" value="${t.rangeMin ?? ''}">
       <label>Max:</label>
-      <input type="number" id="range-max-${t.id}" min="0" max="${TABLE_WIDTH}" placeholder="${TABLE_WIDTH}" value="${t.rangeMax ?? ''}">
+      <input type="number" id="range-max-${t.id}" min="0" max="${TABLE_WIDTH}" step="1" placeholder="${TABLE_WIDTH}" value="${t.rangeMax ?? ''}">
       <span style="font-size:0.75em;color:var(--text-dim)">cm</span>
+    </div>
+    <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px;">
+      Max range width this round: <strong>${formatCm(maxWidth)} cm</strong>
     </div>
     <div class="btn-row">
       <button class="btn-primary btn-sm" onclick="submitRange(${t.id})">Submit Range →</button>
@@ -1084,18 +1167,25 @@ function buildPlayControls(t) {
       const update = () => {
         const vMin = parseInt(minEl.value, 10);
         const vMax = parseInt(maxEl.value, 10);
-        t.rangeMin = isNaN(vMin) ? null : vMin;
-        t.rangeMax = isNaN(vMax) ? null : vMax;
+        const nMin = isNaN(vMin) ? null : Math.min(TABLE_WIDTH, Math.max(0, vMin));
+        const nMax = isNaN(vMax) ? null : Math.min(TABLE_WIDTH, Math.max(0, vMax));
+        if (nMin !== null) minEl.value = nMin;
+        if (nMax !== null) maxEl.value = nMax;
+        minEl.max = nMax !== null ? `${nMax}` : `${TABLE_WIDTH}`;
+        maxEl.min = nMin !== null ? `${nMin}` : '0';
+        t.rangeMin = nMin;
+        t.rangeMax = nMax;
         const panel = document.getElementById(`team-panel-${t.id}`);
         const tableWrap = panel ? panel.querySelector('.table-visual') : null;
         if (!tableWrap) return;
         // remove old band
         tableWrap.querySelectorAll('.range-band').forEach(b => b.remove());
-        if (t.rangeMin !== null && t.rangeMax !== null && t.rangeMin < t.rangeMax) {
+        if (t.rangeMin !== null && t.rangeMax !== null && t.rangeMin <= t.rangeMax) {
           const band = document.createElement('div');
           band.className = 'range-band';
           band.style.left  = pct(t.rangeMin) + '%';
-          band.style.width = (pct(t.rangeMax) - pct(t.rangeMin)) + '%';
+          const widthPct = (pct(t.rangeMax) - pct(t.rangeMin));
+          band.style.width = widthPct > 0 ? `${widthPct}%` : '2px';
           tableWrap.querySelector('.ruler-container').appendChild(band);
         }
       };
@@ -1115,9 +1205,9 @@ function buildScoringResult(t) {
   const insideStr = r.inside
     ? `<span class="score-good">✓ Inside range</span>`
     : `<span class="score-bad">✗ Outside range</span>`;
-  const widthStr  = r.width <= GOOD_MAX_WIDTH
-    ? `<span class="score-good">${r.width} cm (≤60 cm ✓)</span>`
-    : `<span class="score-bad">${r.width} cm (>60 cm ✗)</span>`;
+  const widthStr  = r.width <= r.maxWidth
+    ? `<span class="score-good">${r.width} cm (≤${formatCm(r.maxWidth)} cm ✓)</span>`
+    : `<span class="score-bad">${r.width} cm (>${formatCm(r.maxWidth)} cm ✗)</span>`;
 
   let budgetLine;
   if (r.penalty) {
@@ -1135,11 +1225,13 @@ function buildScoringResult(t) {
   `;
 
   // Guess result (if applicable)
-  if (t.guessSubmitted) {
+  if (t.rangeFoundExact) {
+    div.innerHTML += `<div class="score-line mt-8"><span class="correct-badge">🎯 Point range exact hit (min=max)! Guess score: +${CORRECT_GUESS_BONUS}</span></div>`;
+  } else if (t.guessSubmitted) {
     if (t.guessCorrect) {
-      div.innerHTML += `<div class="score-line mt-8"><span class="correct-badge">🎯 Exact hit! +€${CORRECT_GUESS_BONUS}</span></div>`;
+      div.innerHTML += `<div class="score-line mt-8"><span class="correct-badge">🎯 Exact hit! Guess score: +${CORRECT_GUESS_BONUS}</span></div>`;
     } else {
-      div.innerHTML += `<div class="score-line mt-8"><span class="wrong-badge">✗ Guess: ${t.exactGuess} cm (was ${t.cuePos} cm)</span></div>`;
+      div.innerHTML += `<div class="score-line mt-8"><span class="wrong-badge">✗ Guess: ${t.exactGuess} cm | Guess score: 0</span></div>`;
     }
   }
 
@@ -1148,6 +1240,11 @@ function buildScoringResult(t) {
 
 function buildGuessControls(t) {
   const div = document.createElement('div');
+
+  if (t.rangeFoundExact) {
+    div.innerHTML = `<div class="correct-badge mt-8">🎯 Exact found via min=max range. Guess stage skipped.</div>`;
+    return div;
+  }
 
   if (t.guessSubmitted) {
     if (t.guessCorrect) {
@@ -1191,8 +1288,13 @@ function renderActionBar() {
     } else {
       const btn = document.createElement('button');
       btn.className = 'btn-primary';
-      btn.textContent = '🎯 Proceed to Exact Guess →';
-      btn.onclick = proceedToGuess;
+      if (active.every(t => t.guessSubmitted)) {
+        btn.textContent = '🏁 Finalize Round';
+        btn.onclick = resolveRound;
+      } else {
+        btn.textContent = '🎯 Proceed to Exact Guess →';
+        btn.onclick = proceedToGuess;
+      }
       bar.appendChild(btn);
     }
   } else if (gs.phase === 'guess') {
@@ -1203,6 +1305,27 @@ function renderActionBar() {
       bar.innerHTML = `<div class="waiting-badge">⏳ Waiting for: ${notYet.map(t => escHtml(t.name)).join(', ')}</div>`;
     }
   }
+}
+
+function buildRoundHistory(t) {
+  const div = document.createElement('div');
+  div.className = 'controls-section';
+  const rows = [...t.roundHistory].reverse();
+  const body = rows.length === 0
+    ? '<div style="font-size:0.78em;color:var(--text-dim);">No completed rounds yet.</div>'
+    : rows.map(h => `
+      <div style="font-size:0.78em;border-top:1px dashed rgba(255,255,255,0.12);padding-top:6px;margin-top:6px;">
+        <div><strong>Round ${h.round}</strong> • Range ${h.rangeMin}-${h.rangeMax} cm • Range score ${h.rangeScore}</div>
+        <div>Guess: ${h.guessMethod ? `${h.guessValue} cm (${h.guessMethod})` : '—'} • Guess score ${h.guessScore}</div>
+        <div>Budget after round: €${h.budgetAfter.toFixed(2)}</div>
+      </div>
+    `).join('');
+  div.innerHTML = `
+    <hr class="divider">
+    <div class="section-title">Round history</div>
+    ${body}
+  `;
+  return div;
 }
 
 // ════════════════════════════════════════════════
