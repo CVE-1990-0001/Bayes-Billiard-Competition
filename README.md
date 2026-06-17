@@ -37,7 +37,8 @@ Your range is evaluated:
 | Outcome | Condition | Budget change |
 |---|---|---|
 | **Precise & correct** | Cue ball is inside your range **and** range width is within this round's max limit | **+€0 to +€200** (narrower = more) |
-| **Too wide or wrong** | Range is wider than this round's max limit, or cue ball is outside your range | **−30% of current budget** |
+| **Too wide** | Range is wider than this round's max limit | **Budget loss proportional to how far width exceeds the limit** |
+| **Wrong range** | Cue ball is outside your range | **−30% of current budget** |
 
 Special point-range rule:
 - If `min = max`, the range is treated as an exact guess.
@@ -47,6 +48,13 @@ Special point-range rule:
 Round max range width:
 ```
 maxWidth(round) = 60 × 0.7^(round − 1) cm
+```
+
+Too-wide budget penalty formula:
+```
+overBy = max(0, width − maxWidth)
+penaltyRate = min(1, overBy / maxWidth)
+budgetAfter = budgetBefore × (1 − penaltyRate)
 ```
 
 Budget reward formula (when range is within maxWidth and correct):
@@ -85,7 +93,8 @@ The game ends when:
 | Correct range at width = 0 cm | +€200 budget, 200 pts |
 | Correct range at max allowed width | +€0 budget, 50 pts |
 | Correct range narrower than limit | Reward increases linearly with precision |
-| Wrong range or width above round limit | −30% of budget |
+| Correct but wider than round max limit | Low score + proportional budget loss by over-limit width |
+| Wrong range | −30% of budget |
 | Exact position guess (`Guess` or `min = max`) | Exact hit: +€200 budget and game-ending logic; guess score uses non-linear distance curve |
 
 ---
