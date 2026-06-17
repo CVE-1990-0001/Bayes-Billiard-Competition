@@ -545,7 +545,8 @@
     Each team has a billiard table (0–90 cm). A hidden white cue ball is placed at a random position.
     5 red clue balls are thrown — you see only whether each landed <strong>LEFT</strong>, <strong>RIGHT</strong>, or <strong>HIT</strong> relative to the cue.<br>
     Each round: optionally buy more clue balls (costs €), then estimate the cue's range.
-    Narrow &amp; correct ranges earn budget; wide or wrong ranges cost 30% of budget.<br>
+    Round 1 max range width is 60 cm, then it shrinks by 30% each round.<br>
+    Correct ranges earn more budget when they are narrower; wrong ranges cost 30% of budget.<br>
     Guess the exact position to win <strong>+200 €</strong> and end the game!
   </div>
   <button class="btn-primary" onclick="startGame()" style="margin-top:16px; width:100%; font-size:1.05em; padding:12px;">
@@ -584,7 +585,8 @@
 const BUDGET_START = 100;
 const TABLE_WIDTH  = 90;      // cm
 const INITIAL_BALLS = 5;
-const GOOD_MAX_WIDTH = 60;    // cm – wider than this → penalty
+const INITIAL_MAX_RANGE_WIDTH = 60; // cm in round 1
+const RANGE_WIDTH_REDUCTION = 0.7;  // 30% reduction each round
 const BAD_BUDGET_MULT = 0.7;  // 30% reduction
 const CORRECT_GUESS_BONUS = 200;
 
@@ -613,17 +615,26 @@ function genClueBalls(cuePos, count) {
   return balls;
 }
 
-function calcScore(cuePos, min, max) {
+function getRoundMaxWidth(round) {
+  return INITIAL_MAX_RANGE_WIDTH * Math.pow(RANGE_WIDTH_REDUCTION, round - 1);
+}
+
+function formatCm(value) {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function calcScore(cuePos, min, max, round) {
   const inside = cuePos >= min && cuePos <= max;
   const width  = max - min;
-  if (inside && width <= GOOD_MAX_WIDTH) {
-    const precision = (GOOD_MAX_WIDTH - width) / GOOD_MAX_WIDTH; // 0–1
+  const maxWidth = getRoundMaxWidth(round);
+  if (inside && width <= maxWidth) {
+    const precision = (maxWidth - width) / maxWidth; // 0–1
     const score = Math.round(50 + precision * 150);              // 50–200
-    const budgetGain = Math.round(score * 1.0);
-    return { score, inside, width, budgetGain, penalty: false };
+    const budgetGain = Math.round(200 * precision);              // 0–200
+    return { score, inside, width, maxWidth, budgetGain, penalty: false };
   } else {
     const score = inside ? 15 : 0;
-    return { score, inside, width, budgetGain: 0, penalty: true };
+    return { score, inside, width, maxWidth, budgetGain: 0, penalty: true };
   }
 }
 
@@ -720,6 +731,12 @@ function submitRange(teamId) {
   if (isNaN(minV) || isNaN(maxV)) { alert('Please enter both minimum and maximum values.'); return; }
   if (minV < 0 || maxV > TABLE_WIDTH) { alert(`Range must be within 0 and ${TABLE_WIDTH} cm.`); return; }
   if (minV >= maxV) { alert('Minimum must be less than maximum.'); return; }
+  const width = maxV - minV;
+  const maxWidth = getRoundMaxWidth(gs.round);
+  if (width > maxWidth) {
+    alert(`In round ${gs.round}, range width must be at most ${formatCm(maxWidth)} cm.`);
+    return;
+  }
 
   t.rangeMin = minV;
   t.rangeMax = maxV;
@@ -737,7 +754,7 @@ function doScoring() {
   gs.phase = 'scoring';
   const active = gs.teams.filter(t => !t.eliminated);
   active.forEach(t => {
-    const r = calcScore(t.cuePos, t.rangeMin, t.rangeMax);
+    const r = calcScore(t.cuePos, t.rangeMin, t.rangeMax, gs.round);
     t.scoreResult = r;
     if (r.penalty) {
       t.budget = Math.max(0, Math.floor(t.budget * BAD_BUDGET_MULT * 100) / 100);
@@ -891,8 +908,11 @@ function renderHeader() {
   };
   document.getElementById('phase-label').textContent = phaseMap[gs.phase] || '';
   const cost = extraBallCost(gs.round);
+  const maxWidth = getRoundMaxWidth(gs.round);
   document.getElementById('ball-cost-label').textContent =
-    gs.phase === 'play' ? `Extra clue ball cost this round: €${cost.toFixed(2)}` : '';
+    gs.phase === 'play'
+      ? `Extra clue ball: €${cost.toFixed(2)} • Max range width: ${formatCm(maxWidth)} cm`
+      : '';
 }
 
 function renderTeams() {
@@ -1051,6 +1071,7 @@ function buildPlayControls(t) {
   }
 
   const cost = extraBallCost(gs.round);
+  const maxWidth = getRoundMaxWidth(gs.round);
   const canAffordBall = t.budget >= cost;
 
   div.innerHTML = `
@@ -1068,6 +1089,9 @@ function buildPlayControls(t) {
       <label>Max:</label>
       <input type="number" id="range-max-${t.id}" min="0" max="${TABLE_WIDTH}" placeholder="${TABLE_WIDTH}" value="${t.rangeMax ?? ''}">
       <span style="font-size:0.75em;color:var(--text-dim)">cm</span>
+    </div>
+    <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px;">
+      Max range width this round: <strong>${formatCm(maxWidth)} cm</strong>
     </div>
     <div class="btn-row">
       <button class="btn-primary btn-sm" onclick="submitRange(${t.id})">Submit Range →</button>
@@ -1113,9 +1137,9 @@ function buildScoringResult(t) {
   const insideStr = r.inside
     ? `<span class="score-good">✓ Inside range</span>`
     : `<span class="score-bad">✗ Outside range</span>`;
-  const widthStr  = r.width <= GOOD_MAX_WIDTH
-    ? `<span class="score-good">${r.width} cm (≤60 cm ✓)</span>`
-    : `<span class="score-bad">${r.width} cm (>60 cm ✗)</span>`;
+  const widthStr  = r.width <= r.maxWidth
+    ? `<span class="score-good">${r.width} cm (≤${formatCm(r.maxWidth)} cm ✓)</span>`
+    : `<span class="score-bad">${r.width} cm (>${formatCm(r.maxWidth)} cm ✗)</span>`;
 
   let budgetLine;
   if (r.penalty) {

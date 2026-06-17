@@ -35,12 +35,23 @@ Each player has their own billiard table (0–90 cm wide). At the start of every
 Your range is evaluated:
 | Outcome | Condition | Budget change |
 |---|---|---|
-| **Precise & correct** | Cue ball is inside your range **and** range width ≤ 60 cm | **+€50 to +€200** (narrower = more) |
-| **Wide or wrong** | Range is wider than 60 cm, or cue ball is outside your range | **−30% of current budget** |
+| **Precise & correct** | Cue ball is inside your range **and** range width is within this round's max limit | **+€0 to +€200** (narrower = more) |
+| **Too wide or wrong** | Range is wider than this round's max limit, or cue ball is outside your range | **−30% of current budget** |
 
-Precision score formula (when range is ≤ 60 cm and correct):
+Round max range width:
 ```
-score = 50 + (60 − width) / 60 × 150   → rounds to nearest integer (50–200)
+maxWidth(round) = 60 × 0.7^(round − 1) cm
+```
+
+Budget reward formula (when range is within maxWidth and correct):
+```
+precision = (maxWidth − width) / maxWidth
+budgetGain = round(200 × precision)
+```
+
+Score formula (when range is within maxWidth and correct):
+```
+score = 50 + precision × 150   → rounds to nearest integer (50–200)
 ```
 
 A team whose budget drops to **€0 or below** is **eliminated**.
@@ -62,10 +73,10 @@ The game ends when:
 
 | Situation | Points / Budget impact |
 |---|---|
-| Correct range, width = 0 cm (exact!) | +€200 |
-| Correct range, width = 30 cm | +€125 |
-| Correct range, width = 60 cm | +€50 |
-| Wrong range or width > 60 cm | −30% of budget |
+| Correct range at width = 0 cm | +€200 budget, 200 pts |
+| Correct range at max allowed width | +€0 budget, 50 pts |
+| Correct range narrower than limit | Reward increases linearly with precision |
+| Wrong range or width above round limit | −30% of budget |
 | Exact position guess | +€200, game over |
 
 ---
