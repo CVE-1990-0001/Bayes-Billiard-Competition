@@ -812,12 +812,7 @@ function resolveRound() {
     return;
   }
 
-  if (stillAlive.length === 1) {
-    endGame([stillAlive[0].id], 'opponent_bust');
-    return;
-  }
-
-  // Continue to next round
+  // Continue to next round (even if only one team is still alive)
   gs.round++;
   setTimeout(beginRound, 500);
 }
