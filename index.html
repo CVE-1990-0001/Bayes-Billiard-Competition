@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎱 Bayes Billiard Competition</title>
+  <style>
+    :root {
+      --felt: #2d8a4e;
+      --felt-dark: #1a5c30;
+      --felt-rail: #8B4513;
+      --gold: #f5c518;
+      --red: #cc2200;
+      --white: #f4f4f4;
+      --bg: #0d1b0f;
+      --panel-bg: #162519;
+      --border: #3a6040;
+      --text-dim: #7aaa7e;
+      --blue: #2d7dd2;
+      --warn: #e07a10;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: var(--bg);
+      color: var(--white);
+      min-height: 100vh;
+      padding: 8px;
+      overflow-x: hidden;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.8em;
+      color: var(--gold);
+      text-shadow: 0 0 14px rgba(245, 197, 24, 0.6);
+      padding: 12px 4px 6px;
+      letter-spacing: 2px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85em;
+      margin-bottom: 16px;
+    }
+
+    /* ── Setup ─────────────────────────────────── */
+    #setup-screen {
+      max-width: 460px;
+      margin: 40px auto;
+      background: var(--panel-bg);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      padding: 32px 28px;
+      text-align: center;
+    }
+
+    #setup-screen h2 { color: var(--gold); margin-bottom: 24px; font-size: 1.4em; }
+
+    .team-input-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .team-dot {
+      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-0 { background: #4fc3f7; }
+    .dot-1 { background: #ef9a9a; }
+
+    .team-input-row label { min-width: 70px; text-align: left; font-size: 0.95em; color: var(--text-dim); }
+
+    input[type="text"], input[type="number"] {
+      background: #0d1b0f;
+      border: 1px solid var(--border);
+      color: var(--white);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 0.95em;
+      font-family: inherit;
+      width: 100%;
+    }
+    input[type="text"]:focus, input[type="number"]:focus {
+      outline: none;
+      border-color: var(--gold);
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 7px;
+      padding: 9px 18px;
+      font-family: inherit;
+      font-size: 0.95em;
+      transition: filter 0.15s, transform 0.1s;
+    }
+    button:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); }
+    button:active:not(:disabled) { transform: translateY(0); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary { background: var(--gold); color: #1a1a00; font-weight: bold; }
+    .btn-danger  { background: var(--red);  color: var(--white); font-weight: bold; }
+    .btn-info    { background: var(--blue); color: var(--white); }
+    .btn-neutral { background: #3a6040; color: var(--white); }
+    .btn-sm { padding: 5px 11px; font-size: 0.82em; }
+
+    /* ── Game layout ───────────────────────────── */
+    #game-screen { display: none; }
+
+    .round-header {
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .round-header .round-label {
+      font-size: 1.15em;
+      color: var(--gold);
+      font-weight: bold;
+    }
+    .round-header .phase-label {
+      font-size: 0.82em;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .ball-cost-label {
+      font-size: 0.85em;
+      color: var(--warn);
+      margin-top: 3px;
+    }
+
+    .teams-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .team-panel {
+      flex: 1;
+      min-width: 280px;
+      background: var(--panel-bg);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      position: relative;
+      transition: border-color 0.3s;
+    }
+    .team-panel.eliminated {
+      border-color: var(--red);
+      opacity: 0.6;
+    }
+    .team-panel.winner-glow {
+      border-color: var(--gold);
+      box-shadow: 0 0 24px rgba(245, 197, 24, 0.5);
+      animation: winnerPulse 1s ease-in-out infinite alternate;
+    }
+
+    @keyframes winnerPulse {
+      from { box-shadow: 0 0 14px rgba(245, 197, 24, 0.4); }
+      to   { box-shadow: 0 0 36px rgba(245, 197, 24, 0.85); }
+    }
+
+    .team-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .team-name {
+      font-size: 1.15em;
+      font-weight: bold;
+    }
+    .team-name-0 { color: #4fc3f7; }
+    .team-name-1 { color: #ef9a9a; }
+
+    .budget-display {
+      margin-left: auto;
+      font-size: 0.9em;
+      background: #0d1b0f;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-weight: bold;
+    }
+    .budget-positive { color: #69f0ae; }
+    .budget-warn { color: var(--warn); }
+    .budget-danger { color: var(--red); }
+
+    /* ── Billiard table visual ─────────────────── */
+    .table-visual {
+      background: var(--felt);
+      border: 4px solid var(--felt-rail);
+      border-radius: 8px;
+      padding: 14px 10px 10px;
+      margin-bottom: 10px;
+      position: relative;
+    }
+
+    .ruler-container {
+      position: relative;
+      height: 32px;
+      margin-bottom: 4px;
+    }
+
+    .ruler {
+      position: absolute;
+      top: 50%; left: 0; right: 0;
+      transform: translateY(-50%);
+      height: 6px;
+      background: #c8a872;
+      border-radius: 3px;
+    }
+
+    .ruler-tick {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 1px;
+      background: #a08050;
+    }
+    .ruler-tick.major {
+      width: 1.5px;
+      background: #7a5a30;
+      top: -4px; bottom: -4px;
+    }
+
+    .ruler-label {
+      position: absolute;
+      font-size: 0.55em;
+      color: #c8a872;
+      transform: translateX(-50%);
+      top: -14px;
+    }
+
+    .range-band {
+      position: absolute;
+      top: 0; bottom: 0;
+      background: rgba(245, 197, 24, 0.32);
+      border-left: 2px solid var(--gold);
+      border-right: 2px solid var(--gold);
+      border-radius: 2px;
+      pointer-events: none;
+    }
+
+    .cue-ball-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #ffffff, #cccccc);
+      border: 2px solid #999;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      z-index: 3;
+    }
+
+    .clue-ball-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      border: 1.5px solid #aa0000;
+      z-index: 2;
+    }
+    .clue-ball-marker.left-ball  { background: radial-gradient(circle at 35% 35%, #ff6060, #cc2200); }
+    .clue-ball-marker.right-ball { background: radial-gradient(circle at 35% 35%, #ff6060, #cc2200); }
+    .clue-ball-marker.hit-ball   { background: radial-gradient(circle at 35% 35%, #ffff80, #cccc00); border-color: #aaaa00; }
+
+    /* ── Indicators list ───────────────────────── */
+    .indicators-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .indicator-chip {
+      padding: 3px 9px;
+      border-radius: 12px;
+      font-size: 0.76em;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+    .chip-left  { background: #4a1010; color: #ff9090; border: 1px solid #cc3333; }
+    .chip-right { background: #0f2a4a; color: #90b8ff; border: 1px solid #3366cc; }
+    .chip-hit   { background: #3a3a00; color: #ffff60; border: 1px solid #aaaa00; }
+    .chip-extra { font-size: 0.65em; color: var(--text-dim); align-self: center; }
+
+    /* ── Controls ──────────────────────────────── */
+    .controls-section { margin-top: 10px; }
+
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 8px;
+    }
+    .range-row label { font-size: 0.8em; color: var(--text-dim); min-width: 30px; }
+    .range-row input { width: 70px; text-align: center; }
+
+    .btn-row {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .submitted-badge {
+      background: #1a4a1a;
+      border: 1px solid #3a8a3a;
+      color: #69f0ae;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.8em;
+    }
+
+    .waiting-badge {
+      background: #2a2a0a;
+      border: 1px solid #6a6a20;
+      color: var(--gold);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 0.8em;
+    }
+
+    /* ── Scoring result ────────────────────────── */
+    .score-result {
+      background: #0d1b0f;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+      font-size: 0.85em;
+    }
+    .score-result .score-line { margin-bottom: 4px; }
+    .score-good { color: #69f0ae; }
+    .score-bad  { color: var(--red); }
+    .score-warn { color: var(--warn); }
+    .score-value { font-size: 1.2em; font-weight: bold; }
+
+    /* ── Phase action bar ──────────────────────── */
+    #action-bar {
+      text-align: center;
+      margin: 14px 0;
+    }
+    #action-bar button { min-width: 180px; padding: 11px 24px; font-size: 1em; }
+
+    /* ── Guess row ─────────────────────────────── */
+    .guess-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .guess-row label { font-size: 0.82em; color: var(--text-dim); white-space: nowrap; }
+    .guess-row input { width: 70px; text-align: center; }
+
+    /* ── Game over ─────────────────────────────── */
+    #gameover-screen {
+      display: none;
+      max-width: 600px;
+      margin: 30px auto;
+      background: var(--panel-bg);
+      border: 2px solid var(--gold);
+      border-radius: 14px;
+      padding: 30px;
+      text-align: center;
+    }
+    #gameover-screen h2 { color: var(--gold); font-size: 1.6em; margin-bottom: 14px; }
+    .winner-name {
+      font-size: 2em;
+      font-weight: bold;
+      letter-spacing: 2px;
+      padding: 12px;
+      border-radius: 10px;
+      display: inline-block;
+      margin: 10px 0;
+      animation: winnerNamePulse 0.8s ease-in-out infinite alternate;
+    }
+    .winner-name-0 { color: #4fc3f7; text-shadow: 0 0 20px #4fc3f7; }
+    .winner-name-1 { color: #ef9a9a; text-shadow: 0 0 20px #ef9a9a; }
+
+    @keyframes winnerNamePulse {
+      from { transform: scale(1); }
+      to   { transform: scale(1.06); }
+    }
+
+    .gameover-stats {
+      margin: 16px 0;
+      font-size: 0.9em;
+      color: var(--text-dim);
+    }
+
+    /* ── Confetti canvas ───────────────────────── */
+    #confetti-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* ── No budget animation ───────────────────── */
+    .bust-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(180, 0, 0, 0.18);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      animation: bustFlash 0.4s ease-in-out 3;
+    }
+    .bust-text {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: var(--red);
+      text-shadow: 0 0 10px #ff0000;
+      letter-spacing: 2px;
+    }
+
+    @keyframes bustFlash {
+      0%, 100% { background: rgba(180, 0, 0, 0.18); }
+      50%       { background: rgba(255, 0, 0, 0.42); }
+    }
+
+    /* ── Budget delta flash ─────────────────────── */
+    .budget-flash-up {
+      animation: flashUp 0.7s ease-out;
+    }
+    .budget-flash-down {
+      animation: flashDown 0.7s ease-out;
+    }
+
+    @keyframes flashUp {
+      0%   { transform: scale(1.4); color: #69f0ae; }
+      100% { transform: scale(1); }
+    }
+    @keyframes flashDown {
+      0%   { transform: scale(1.4); color: #ff5555; }
+      100% { transform: scale(1); }
+    }
+
+    /* ── Misc ───────────────────────────────────── */
+    .section-title {
+      font-size: 0.78em;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      margin-bottom: 5px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 10px 0;
+    }
+
+    .info-box {
+      background: #0d1b0f;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      font-size: 0.82em;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    .text-center { text-align: center; }
+    .mt-8 { margin-top: 8px; }
+
+    .eliminated-banner {
+      text-align: center;
+      color: var(--red);
+      font-weight: bold;
+      font-size: 0.9em;
+      padding: 6px;
+      background: rgba(200,0,0,0.12);
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+
+    .correct-badge {
+      background: #1a4a1a;
+      border: 1px solid #3a8a3a;
+      color: #69f0ae;
+      border-radius: 6px;
+      padding: 4px 9px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .wrong-badge {
+      background: #3a1a1a;
+      border: 1px solid #8a3a3a;
+      color: #ff9090;
+      border-radius: 6px;
+      padding: 4px 9px;
+      font-size: 0.8em;
+    }
+
+    .round-end-info {
+      background: #1a2d1e;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.84em;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 640px) {
+      h1 { font-size: 1.35em; }
+      .teams-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="confetti-canvas"></canvas>
+
+<h1>🎱 Bayes Billiard Competition</h1>
+<p class="subtitle">A Bayesian estimation game for two teams</p>
+
+<!-- ── Setup Screen ── -->
+<div id="setup-screen">
+  <h2>Team Setup</h2>
+  <div class="team-input-row">
+    <span class="team-dot dot-0"></span>
+    <label for="name0">Team 1</label>
+    <input type="text" id="name0" placeholder="Team name…" value="Team Alpha" maxlength="24">
+  </div>
+  <div class="team-input-row">
+    <span class="team-dot dot-1"></span>
+    <label for="name1">Team 2</label>
+    <input type="text" id="name1" placeholder="Team name…" value="Team Beta" maxlength="24">
+  </div>
+  <div class="info-box mt-8" style="text-align:left;">
+    <strong style="color:var(--white)">How to play:</strong><br>
+    Each team has a billiard table (0–90 cm). A hidden white cue ball is placed at a random position.
+    5 red clue balls are thrown — you see only whether each landed <strong>LEFT</strong>, <strong>RIGHT</strong>, or <strong>HIT</strong> relative to the cue.<br>
+    Each round: optionally buy more clue balls (costs €), then estimate the cue's range.
+    Narrow &amp; correct ranges earn budget; wide or wrong ranges cost 30% of budget.<br>
+    Guess the exact position to win <strong>+200 €</strong> and end the game!
+  </div>
+  <button class="btn-primary" onclick="startGame()" style="margin-top:16px; width:100%; font-size:1.05em; padding:12px;">
+    🎱 Start Competition
+  </button>
+</div>
+
+<!-- ── Game Screen ── -->
+<div id="game-screen">
+  <div class="round-header">
+    <div class="round-label" id="round-label">Round 1</div>
+    <div class="phase-label" id="phase-label">Estimate the cue ball position</div>
+    <div class="ball-cost-label" id="ball-cost-label"></div>
+  </div>
+
+  <div class="teams-row" id="teams-row">
+    <!-- Team panels injected by JS -->
+  </div>
+
+  <div id="action-bar"></div>
+</div>
+
+<!-- ── Game Over Screen ── -->
+<div id="gameover-screen">
+  <div id="gameover-content"></div>
+  <button class="btn-primary" onclick="resetGame()" style="margin-top:22px; padding:12px 36px; font-size:1.05em;">
+    🔄 Play Again
+  </button>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+//  GAME STATE
+// ════════════════════════════════════════════════
+
+const BUDGET_START = 100;
+const TABLE_WIDTH  = 90;      // cm
+const INITIAL_BALLS = 5;
+const GOOD_MAX_WIDTH = 60;    // cm – wider than this → penalty
+const BAD_BUDGET_MULT = 0.7;  // 30% reduction
+const CORRECT_GUESS_BONUS = 200;
+
+let gs = null; // game state
+
+function extraBallCost(round) {
+  return 5 * Math.pow(2, round - 1);
+}
+
+function randPos() {
+  return Math.floor(Math.random() * (TABLE_WIDTH + 1)); // 0–90
+}
+
+function getIndicator(ballPos, cuePos) {
+  if (ballPos < cuePos) return 'LEFT';
+  if (ballPos > cuePos) return 'RIGHT';
+  return 'HIT';
+}
+
+function genClueBalls(cuePos, count) {
+  const balls = [];
+  for (let i = 0; i < count; i++) {
+    const pos = randPos();
+    balls.push({ pos, indicator: getIndicator(pos, cuePos) });
+  }
+  return balls;
+}
+
+function calcScore(cuePos, min, max) {
+  const inside = cuePos >= min && cuePos <= max;
+  const width  = max - min;
+  if (inside && width <= GOOD_MAX_WIDTH) {
+    const precision = (GOOD_MAX_WIDTH - width) / GOOD_MAX_WIDTH; // 0–1
+    const score = Math.round(50 + precision * 150);              // 50–200
+    const budgetGain = Math.round(score * 1.0);
+    return { score, inside, width, budgetGain, penalty: false };
+  } else {
+    const score = inside ? 15 : 0;
+    return { score, inside, width, budgetGain: 0, penalty: true };
+  }
+}
+
+// ════════════════════════════════════════════════
+//  GAME INIT / RESET
+// ════════════════════════════════════════════════
+
+function makeTeam(id, name) {
+  return {
+    id,
+    name,
+    budget: BUDGET_START,
+    cuePos: null,
+    clueBalls: [],
+    rangeMin: null, rangeMax: null,
+    rangeSubmitted: false,
+    exactGuess: null,
+    guessSubmitted: false,
+    scoreResult: null,
+    eliminated: false,
+    guessCorrect: null,
+    extraBallsThisRound: 0,
+  };
+}
+
+function startGame() {
+  const n0 = document.getElementById('name0').value.trim() || 'Team Alpha';
+  const n1 = document.getElementById('name1').value.trim() || 'Team Beta';
+  gs = {
+    teams: [makeTeam(0, n0), makeTeam(1, n1)],
+    round: 1,
+    phase: 'play', // play | scoring | guess | gameover
+  };
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display  = 'block';
+  beginRound();
+}
+
+function resetGame() {
+  stopConfetti();
+  document.getElementById('gameover-screen').style.display = 'none';
+  document.getElementById('setup-screen').style.display    = 'block';
+  document.getElementById('game-screen').style.display     = 'none';
+  gs = null;
+}
+
+// ════════════════════════════════════════════════
+//  ROUND LIFECYCLE
+// ════════════════════════════════════════════════
+
+function beginRound() {
+  gs.phase = 'play';
+  gs.teams.forEach(t => {
+    if (t.eliminated) return;
+    t.cuePos = randPos();
+    t.clueBalls = genClueBalls(t.cuePos, INITIAL_BALLS);
+    t.rangeMin = null; t.rangeMax = null;
+    t.rangeSubmitted = false;
+    t.exactGuess = null;
+    t.guessSubmitted = false;
+    t.scoreResult = null;
+    t.guessCorrect = null;
+    t.extraBallsThisRound = 0;
+  });
+  render();
+}
+
+function throwExtraBall(teamId) {
+  const t = gs.teams[teamId];
+  if (t.eliminated || t.rangeSubmitted) return;
+  const cost = extraBallCost(gs.round);
+  if (t.budget < cost) {
+    alert(`Not enough budget! Extra ball costs €${cost.toFixed(2)} but ${t.name} only has €${t.budget.toFixed(2)}.`);
+    return;
+  }
+  t.budget -= cost;
+  t.extraBallsThisRound++;
+  const ball = { pos: randPos(), indicator: null };
+  ball.indicator = getIndicator(ball.pos, t.cuePos);
+  ball.extra = true;
+  ball.cost = cost;
+  t.clueBalls.push(ball);
+  render();
+}
+
+function submitRange(teamId) {
+  const t = gs.teams[teamId];
+  if (t.eliminated || t.rangeSubmitted) return;
+  const minEl = document.getElementById(`range-min-${teamId}`);
+  const maxEl = document.getElementById(`range-max-${teamId}`);
+  const minV  = parseInt(minEl.value, 10);
+  const maxV  = parseInt(maxEl.value, 10);
+
+  if (isNaN(minV) || isNaN(maxV)) { alert('Please enter both minimum and maximum values.'); return; }
+  if (minV < 0 || maxV > TABLE_WIDTH) { alert(`Range must be within 0 and ${TABLE_WIDTH} cm.`); return; }
+  if (minV >= maxV) { alert('Minimum must be less than maximum.'); return; }
+
+  t.rangeMin = minV;
+  t.rangeMax = maxV;
+  t.rangeSubmitted = true;
+  render();
+
+  // Check if all active teams submitted
+  const active = gs.teams.filter(x => !x.eliminated);
+  if (active.every(x => x.rangeSubmitted)) {
+    setTimeout(doScoring, 300);
+  }
+}
+
+function doScoring() {
+  gs.phase = 'scoring';
+  const active = gs.teams.filter(t => !t.eliminated);
+  active.forEach(t => {
+    const r = calcScore(t.cuePos, t.rangeMin, t.rangeMax);
+    t.scoreResult = r;
+    if (r.penalty) {
+      t.budget = Math.max(0, Math.floor(t.budget * BAD_BUDGET_MULT * 100) / 100);
+    } else {
+      t.budget = Math.round((t.budget + r.budgetGain) * 100) / 100;
+    }
+  });
+  // Check eliminations and fire bust animation for newly eliminated teams
+  gs.teams.forEach(t => {
+    if (!t.eliminated && t.budget <= 0) {
+      t.eliminated = true;
+      t.justBusted = true;
+    }
+  });
+  render();
+  // Show bust animation on newly-busted panels after render
+  gs.teams.forEach(t => {
+    if (t.justBusted) {
+      t.justBusted = false;
+      showBustOnPanel(t.id);
+    }
+  });
+}
+
+function proceedToGuess() {
+  gs.phase = 'guess';
+  render();
+}
+
+function submitGuess(teamId) {
+  const t = gs.teams[teamId];
+  if (t.eliminated || t.guessSubmitted) return;
+  const el = document.getElementById(`guess-input-${teamId}`);
+  const v  = parseInt(el.value, 10);
+  if (isNaN(v) || v < 0 || v > TABLE_WIDTH) {
+    alert(`Guess must be an integer between 0 and ${TABLE_WIDTH}.`);
+    return;
+  }
+  t.exactGuess = v;
+  t.guessSubmitted = true;
+  t.guessCorrect = (v === t.cuePos);
+  if (t.guessCorrect) {
+    t.budget = Math.round((t.budget + CORRECT_GUESS_BONUS) * 100) / 100;
+  }
+  render();
+
+  const active = gs.teams.filter(x => !x.eliminated);
+  if (active.every(x => x.guessSubmitted)) {
+    setTimeout(resolveRound, 400);
+  }
+}
+
+function resolveRound() {
+  // Check for correct guesses (among non-eliminated teams)
+  const correctGuessers = gs.teams.filter(t => !t.eliminated && t.guessCorrect);
+
+  // Re-check eliminations in case budget dropped to 0 after guess bonus edge cases
+  gs.teams.forEach(t => {
+    if (!t.eliminated && t.budget <= 0) t.eliminated = true;
+  });
+
+  const stillAlive = gs.teams.filter(t => !t.eliminated);
+
+  if (correctGuessers.length > 0) {
+    // End game – guessers win
+    endGame(correctGuessers.map(t => t.id), 'correct_guess');
+    return;
+  }
+
+  if (stillAlive.length === 0) {
+    endGame([], 'both_bust');
+    return;
+  }
+
+  if (stillAlive.length === 1) {
+    endGame([stillAlive[0].id], 'opponent_bust');
+    return;
+  }
+
+  // Continue to next round
+  gs.round++;
+  setTimeout(beginRound, 500);
+}
+
+function proceedNextRound() {
+  gs.round++;
+  beginRound();
+}
+
+// ════════════════════════════════════════════════
+//  GAME OVER
+// ════════════════════════════════════════════════
+
+function endGame(winnerIds, reason) {
+  gs.phase = 'gameover';
+  document.getElementById('game-screen').style.display = 'none';
+  const el = document.getElementById('gameover-screen');
+  el.style.display = 'block';
+
+  let html = '';
+  if (winnerIds.length === 0) {
+    html += `<h2>💸 Both Teams Eliminated!</h2>`;
+    html += `<p style="color:var(--text-dim);margin-top:10px;">Both teams ran out of budget. It's a draw!</p>`;
+    html += `<div style="font-size:3em;margin:12px;animation:bustFlash 0.5s ease-in-out 4;">💸</div>`;
+  } else if (winnerIds.length === 2) {
+    html += `<h2>🎉 Both Teams Win!</h2>`;
+    html += `<p style="color:var(--text-dim);margin-top:10px;">Both teams guessed the exact position — impressive!</p>`;
+    html += winnerIds.map(id => {
+      const t = gs.teams[id];
+      return `<div class="winner-name winner-name-${id}">🏆 ${escHtml(t.name)}</div>`;
+    }).join('<br>');
+    startConfetti();
+  } else {
+    const w = gs.teams[winnerIds[0]];
+    const l = gs.teams[1 - winnerIds[0]];
+    html += `<h2>🏆 Winner!</h2>`;
+    html += `<div class="winner-name winner-name-${w.id}">🎱 ${escHtml(w.name)}</div>`;
+    if (reason === 'correct_guess') {
+      html += `<p style="color:#69f0ae;margin-top:8px;">Correct exact position guess! <strong>+€${CORRECT_GUESS_BONUS}</strong></p>`;
+    } else if (reason === 'opponent_bust') {
+      html += `<p style="color:var(--warn);margin-top:8px;">${escHtml(l.name)} ran out of budget. <span style="animation:bustFlash 0.5s ease-in-out 3;display:inline-block;">💸</span></p>`;
+    }
+    startConfetti();
+  }
+
+  html += `<div class="gameover-stats">`;
+  gs.teams.forEach(t => {
+    html += `<div style="margin:5px 0;">
+      <span class="team-name team-name-${t.id}">${escHtml(t.name)}</span>:
+      Final budget <strong style="color:${t.budget > 0 ? '#69f0ae' : 'var(--red)'}">€${t.budget.toFixed(2)}</strong>
+      ${t.eliminated ? '<span style="color:var(--red)"> 💸 Eliminated</span>' : ''}
+    </div>`;
+  });
+  html += `<div style="margin-top:8px;">Rounds played: <strong>${gs.round}</strong></div>`;
+  html += `</div>`;
+
+  html += `<p style="font-size:0.8em;color:var(--text-dim);margin-top:6px;">
+    The Bayesian approach: each clue ball narrows the posterior distribution of the cue's position!
+  </p>`;
+
+  document.getElementById('gameover-content').innerHTML = html;
+}
+
+// ════════════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════════════
+
+function render() {
+  renderHeader();
+  renderTeams();
+  renderActionBar();
+}
+
+function renderHeader() {
+  document.getElementById('round-label').textContent = `Round ${gs.round}`;
+  const phaseMap = {
+    play:    'Throw extra clue balls and enter your estimated range',
+    scoring: 'Scoring — see how well you estimated',
+    guess:   'Final guess — enter the exact cue ball position!',
+  };
+  document.getElementById('phase-label').textContent = phaseMap[gs.phase] || '';
+  const cost = extraBallCost(gs.round);
+  document.getElementById('ball-cost-label').textContent =
+    gs.phase === 'play' ? `Extra clue ball cost this round: €${cost.toFixed(2)}` : '';
+}
+
+function renderTeams() {
+  const row = document.getElementById('teams-row');
+  row.innerHTML = '';
+  gs.teams.forEach(t => {
+    row.appendChild(buildTeamPanel(t));
+  });
+}
+
+function buildTeamPanel(t) {
+  const div = document.createElement('div');
+  div.className = 'team-panel' + (t.eliminated ? ' eliminated' : '');
+  div.id = `team-panel-${t.id}`;
+
+  // ── Header ──
+  const budgetClass = t.budget > 50 ? 'budget-positive' : t.budget > 20 ? 'budget-warn' : 'budget-danger';
+  div.innerHTML = `
+    <div class="team-header">
+      <span class="team-dot dot-${t.id}"></span>
+      <span class="team-name team-name-${t.id}">${escHtml(t.name)}</span>
+      <span class="budget-display ${budgetClass}" id="budget-${t.id}">€${t.budget.toFixed(2)}</span>
+    </div>
+  `;
+
+  if (t.eliminated) {
+    div.innerHTML += `<div class="eliminated-banner">💸 Eliminated — Budget exhausted</div>`;
+    // Add bust overlay briefly (already eliminated)
+    return div;
+  }
+
+  // ── Table visual ──
+  div.appendChild(buildTableVisual(t));
+
+  // ── Indicators ──
+  div.innerHTML += `<div class="section-title">Clue ball indicators</div>`;
+  div.appendChild(buildIndicatorsList(t));
+
+  // ── Phase-specific controls ──
+  if (gs.phase === 'play') {
+    div.appendChild(buildPlayControls(t));
+  } else if (gs.phase === 'scoring') {
+    div.appendChild(buildScoringResult(t));
+  } else if (gs.phase === 'guess') {
+    div.appendChild(buildScoringResult(t)); // show previous score
+    div.appendChild(buildGuessControls(t));
+  }
+
+  return div;
+}
+
+function buildTableVisual(t) {
+  const wrap = document.createElement('div');
+  wrap.className = 'table-visual';
+
+  const rulerC = document.createElement('div');
+  rulerC.className = 'ruler-container';
+
+  const ruler = document.createElement('div');
+  ruler.className = 'ruler';
+  rulerC.appendChild(ruler);
+
+  // Ticks
+  for (let i = 0; i <= TABLE_WIDTH; i += 10) {
+    const tick = document.createElement('div');
+    tick.className = 'ruler-tick major';
+    tick.style.left = pct(i) + '%';
+    rulerC.appendChild(tick);
+    const lbl = document.createElement('div');
+    lbl.className = 'ruler-label';
+    lbl.textContent = i;
+    lbl.style.left = pct(i) + '%';
+    rulerC.appendChild(lbl);
+  }
+
+  // Range band (if submitted)
+  if (t.rangeMin !== null && t.rangeMax !== null) {
+    const band = document.createElement('div');
+    band.className = 'range-band';
+    band.style.left  = pct(t.rangeMin) + '%';
+    band.style.width = (pct(t.rangeMax) - pct(t.rangeMin)) + '%';
+    rulerC.appendChild(band);
+  }
+
+  // Clue ball markers: only show positions AFTER team has submitted their exact guess
+  const revealBalls = t.guessSubmitted;
+  if (revealBalls) {
+    t.clueBalls.forEach(b => {
+      const m = document.createElement('div');
+      const cls = b.indicator === 'LEFT' ? 'left-ball' : b.indicator === 'RIGHT' ? 'right-ball' : 'hit-ball';
+      m.className = `clue-ball-marker ${cls}`;
+      m.style.left = pct(b.pos) + '%';
+      m.title = `${b.indicator} (pos: ${b.pos})`;
+      rulerC.appendChild(m);
+    });
+  }
+
+  // Cue ball: only revealed after team submits exact guess
+  const showCue = t.guessSubmitted;
+  if (showCue) {
+    const cm = document.createElement('div');
+    cm.className = 'cue-ball-marker';
+    cm.style.left = pct(t.cuePos) + '%';
+    cm.title = `Cue ball at ${t.cuePos} cm`;
+    rulerC.appendChild(cm);
+  }
+
+  wrap.appendChild(rulerC);
+
+  // Position label and range info when revealed
+  if (showCue) {
+    wrap.innerHTML += `
+      <div style="font-size:0.7em;color:#c8a872;margin-top:4px;text-align:center;">
+        🎱 Cue ball at <strong>${t.cuePos} cm</strong>
+        ${t.rangeMin !== null ? `| Range: ${t.rangeMin}–${t.rangeMax} cm` : ''}
+      </div>`;
+  } else if (t.rangeMin !== null) {
+    wrap.innerHTML += `
+      <div style="font-size:0.7em;color:#c8a872;margin-top:4px;text-align:center;">
+        Range: ${t.rangeMin}–${t.rangeMax} cm (width: ${t.rangeMax - t.rangeMin} cm)
+      </div>`;
+  }
+}
+
+function buildIndicatorsList(t) {
+  const div = document.createElement('div');
+  div.className = 'indicators-list';
+
+  t.clueBalls.forEach((b, i) => {
+    const chip = document.createElement('span');
+    const cls = b.indicator === 'LEFT' ? 'chip-left' : b.indicator === 'RIGHT' ? 'chip-right' : 'chip-hit';
+    const label = b.indicator === 'LEFT' ? '◀ LEFT' : b.indicator === 'RIGHT' ? 'RIGHT ▶' : '✕ HIT';
+    chip.className = `indicator-chip ${cls}`;
+    chip.title = `Clue ball ${i + 1}`;
+    chip.textContent = label;
+    div.appendChild(chip);
+
+    if (b.extra) {
+      const costChip = document.createElement('span');
+      costChip.className = 'indicator-chip chip-extra';
+      costChip.textContent = `(€${b.cost})`;
+      div.appendChild(costChip);
+    }
+  });
+
+  return div;
+}
+
+function buildPlayControls(t) {
+  const div = document.createElement('div');
+  div.className = 'controls-section';
+
+  if (t.rangeSubmitted) {
+    div.innerHTML = `<div class="submitted-badge">✓ Range submitted: ${t.rangeMin}–${t.rangeMax} cm</div>`;
+    return div;
+  }
+
+  const cost = extraBallCost(gs.round);
+  const canAffordBall = t.budget >= cost;
+
+  div.innerHTML = `
+    <div class="btn-row" style="margin-bottom:10px;">
+      <button class="btn-info btn-sm" onclick="throwExtraBall(${t.id})" ${canAffordBall ? '' : 'disabled'}>
+        🔴 Extra ball (€${cost.toFixed(2)})
+      </button>
+      ${!canAffordBall ? '<span style="font-size:0.75em;color:var(--red)">Not enough budget</span>' : ''}
+    </div>
+    <hr class="divider">
+    <div class="section-title">Estimate cue ball range</div>
+    <div class="range-row">
+      <label>Min:</label>
+      <input type="number" id="range-min-${t.id}" min="0" max="${TABLE_WIDTH}" placeholder="0" value="${t.rangeMin ?? ''}">
+      <label>Max:</label>
+      <input type="number" id="range-max-${t.id}" min="0" max="${TABLE_WIDTH}" placeholder="${TABLE_WIDTH}" value="${t.rangeMax ?? ''}">
+      <span style="font-size:0.75em;color:var(--text-dim)">cm</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary btn-sm" onclick="submitRange(${t.id})">Submit Range →</button>
+    </div>
+  `;
+
+  // Live update table visual as user types
+  setTimeout(() => {
+    const minEl = document.getElementById(`range-min-${t.id}`);
+    const maxEl = document.getElementById(`range-max-${t.id}`);
+    if (minEl && maxEl) {
+      const update = () => {
+        const vMin = parseInt(minEl.value, 10);
+        const vMax = parseInt(maxEl.value, 10);
+        t.rangeMin = isNaN(vMin) ? null : vMin;
+        t.rangeMax = isNaN(vMax) ? null : vMax;
+        const panel = document.getElementById(`team-panel-${t.id}`);
+        const tableWrap = panel ? panel.querySelector('.table-visual') : null;
+        if (!tableWrap) return;
+        // remove old band
+        tableWrap.querySelectorAll('.range-band').forEach(b => b.remove());
+        if (t.rangeMin !== null && t.rangeMax !== null && t.rangeMin < t.rangeMax) {
+          const band = document.createElement('div');
+          band.className = 'range-band';
+          band.style.left  = pct(t.rangeMin) + '%';
+          band.style.width = (pct(t.rangeMax) - pct(t.rangeMin)) + '%';
+          tableWrap.querySelector('.ruler-container').appendChild(band);
+        }
+      };
+      minEl.addEventListener('input', update);
+      maxEl.addEventListener('input', update);
+    }
+  }, 0);
+
+  return div;
+}
+
+function buildScoringResult(t) {
+  const div = document.createElement('div');
+  if (!t.scoreResult) return div;
+  const r = t.scoreResult;
+
+  const insideStr = r.inside
+    ? `<span class="score-good">✓ Inside range</span>`
+    : `<span class="score-bad">✗ Outside range</span>`;
+  const widthStr  = r.width <= GOOD_MAX_WIDTH
+    ? `<span class="score-good">${r.width} cm (≤60 cm ✓)</span>`
+    : `<span class="score-bad">${r.width} cm (>60 cm ✗)</span>`;
+
+  let budgetLine;
+  if (r.penalty) {
+    budgetLine = `<span class="score-bad">Budget ×0.70 (−30%)</span>`;
+  } else {
+    budgetLine = `<span class="score-good">Budget +€${r.budgetGain}</span>`;
+  }
+
+  div.className = 'score-result';
+  div.innerHTML = `
+    <div class="section-title">Round ${gs.round} result</div>
+    <div class="score-line">${insideStr} | Width: ${widthStr}</div>
+    <div class="score-line">Score: <span class="score-value" style="color:${r.penalty ? 'var(--red)' : '#69f0ae'}">${r.score}</span> pts</div>
+    <div class="score-line">${budgetLine}</div>
+  `;
+
+  // Guess result (if applicable)
+  if (t.guessSubmitted) {
+    if (t.guessCorrect) {
+      div.innerHTML += `<div class="score-line mt-8"><span class="correct-badge">🎯 Exact hit! +€${CORRECT_GUESS_BONUS}</span></div>`;
+    } else {
+      div.innerHTML += `<div class="score-line mt-8"><span class="wrong-badge">✗ Guess: ${t.exactGuess} cm (was ${t.cuePos} cm)</span></div>`;
+    }
+  }
+
+  return div;
+}
+
+function buildGuessControls(t) {
+  const div = document.createElement('div');
+
+  if (t.guessSubmitted) {
+    if (t.guessCorrect) {
+      div.innerHTML = `<div class="correct-badge mt-8">🎯 Correct guess! +€${CORRECT_GUESS_BONUS}</div>`;
+    } else {
+      div.innerHTML = `<div class="submitted-badge mt-8">✓ Guess submitted: ${t.exactGuess} cm</div>`;
+    }
+    return div;
+  }
+
+  div.innerHTML = `
+    <hr class="divider">
+    <div class="section-title">Exact position guess</div>
+    <div class="guess-row">
+      <label>Position (0–${TABLE_WIDTH}):</label>
+      <input type="number" id="guess-input-${t.id}" min="0" max="${TABLE_WIDTH}" placeholder="?">
+      <span style="font-size:0.75em;color:var(--text-dim)">cm</span>
+      <button class="btn-danger btn-sm" onclick="submitGuess(${t.id})">Guess!</button>
+    </div>
+    <div style="font-size:0.72em;color:var(--text-dim);margin-top:4px;">
+      Correct guess = +€${CORRECT_GUESS_BONUS} &amp; game ends!
+    </div>
+  `;
+  return div;
+}
+
+function renderActionBar() {
+  const bar = document.getElementById('action-bar');
+  bar.innerHTML = '';
+
+  if (gs.phase === 'scoring') {
+    const allEliminated = gs.teams.every(t => t.eliminated);
+    const active = gs.teams.filter(t => !t.eliminated);
+
+    if (allEliminated) {
+      const btn = document.createElement('button');
+      btn.className = 'btn-danger';
+      btn.textContent = '📊 See Results';
+      btn.onclick = () => endGame([], 'both_bust');
+      bar.appendChild(btn);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'btn-primary';
+      btn.textContent = '🎯 Proceed to Exact Guess →';
+      btn.onclick = proceedToGuess;
+      bar.appendChild(btn);
+    }
+  } else if (gs.phase === 'guess') {
+    const active = gs.teams.filter(t => !t.eliminated);
+    const notYet  = active.filter(t => !t.guessSubmitted);
+    const done    = active.filter(t => t.guessSubmitted);
+    if (notYet.length > 0 && done.length > 0) {
+      bar.innerHTML = `<div class="waiting-badge">⏳ Waiting for: ${notYet.map(t => escHtml(t.name)).join(', ')}</div>`;
+    }
+  }
+}
+
+// ════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════
+
+function pct(cm) {
+  return (cm / TABLE_WIDTH) * 100;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ════════════════════════════════════════════════
+//  CONFETTI
+// ════════════════════════════════════════════════
+
+let confettiAnimId = null;
+let confettiParticles = [];
+
+function startConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  confettiParticles = [];
+  for (let i = 0; i < 160; i++) {
+    confettiParticles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height - canvas.height,
+      w: 6 + Math.random() * 8,
+      h: 3 + Math.random() * 5,
+      color: ['#f5c518','#69f0ae','#4fc3f7','#ef9a9a','#ce93d8','#ff8a65'][Math.floor(Math.random()*6)],
+      rot: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.15,
+      vy: 2 + Math.random() * 4,
+      vx: (Math.random() - 0.5) * 2,
+    });
+  }
+
+  function frame() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let anyVisible = false;
+    confettiParticles.forEach(p => {
+      p.x  += p.vx;
+      p.y  += p.vy;
+      p.rot += p.rotSpeed;
+      if (p.y < canvas.height + 20) anyVisible = true;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      ctx.restore();
+    });
+    if (anyVisible) confettiAnimId = requestAnimationFrame(frame);
+    else stopConfetti();
+  }
+  if (confettiAnimId) cancelAnimationFrame(confettiAnimId);
+  confettiAnimId = requestAnimationFrame(frame);
+}
+
+function stopConfetti() {
+  if (confettiAnimId) {
+    cancelAnimationFrame(confettiAnimId);
+    confettiAnimId = null;
+  }
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// ════════════════════════════════════════════════
+//  BUST ANIMATION
+// ════════════════════════════════════════════════
+
+function showBustOnPanel(teamId) {
+  const panel = document.getElementById(`team-panel-${teamId}`);
+  if (!panel) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'bust-overlay';
+  overlay.innerHTML = `<span class="bust-text">💸 NO BUDGET!</span>`;
+  panel.style.position = 'relative';
+  panel.appendChild(overlay);
+  setTimeout(() => overlay.remove(), 1800);
+}
+
+function showBustAnimation() {
+  gs.teams.filter(t => t.eliminated).forEach(t => showBustOnPanel(t.id));
+}
+</script>
+</body>
+</html>
