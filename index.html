@@ -590,6 +590,7 @@ const EXTRA_BALL_BASE_COST = 5;
 const INITIAL_MAX_RANGE_WIDTH = 60; // cm in round 1
 const RANGE_WIDTH_REDUCTION = 0.7;  // 30% reduction each round
 const BAD_BUDGET_MULT = 0.7;  // 30% reduction
+const BAD_BUDGET_PENALTY_RATE = 1 - BAD_BUDGET_MULT;
 const CORRECT_GUESS_BONUS = 200;
 
 let gs = null; // game state
@@ -638,14 +639,19 @@ function calcScore(cuePos, min, max, round) {
   const maxWidth = getRoundMaxWidth(round);
   const pointRange = (min === max);
   const exactByRange = pointRange && min === cuePos;
-  if (inside && width <= maxWidth) {
+  const overBy = Math.max(0, width - maxWidth);
+  const overLimit = overBy > 0;
+  if (inside && !overLimit) {
     const precision = (maxWidth - width) / maxWidth; // 0–1
     const score = Math.round(50 + precision * 150);              // 50–200
     const budgetGain = Math.round(200 * precision);              // 0–200
-    return { score, inside, width, maxWidth, budgetGain, penalty: false, pointRange, exactByRange };
+    return { score, inside, width, maxWidth, budgetGain, penalty: false, pointRange, exactByRange, overLimit: false, overBy: 0, budgetPenaltyRate: 0 };
   } else {
-    const score = inside ? 15 : 0;
-    return { score, inside, width, maxWidth, budgetGain: 0, penalty: true, pointRange, exactByRange };
+    const score = inside ? Math.max(5, Math.round(20 - (overBy / maxWidth) * 20)) : 0;
+    const budgetPenaltyRate = overLimit
+      ? Math.min(1, overBy / maxWidth)
+      : BAD_BUDGET_PENALTY_RATE;
+    return { score, inside, width, maxWidth, budgetGain: 0, penalty: true, pointRange, exactByRange, overLimit, overBy, budgetPenaltyRate };
   }
 }
 
@@ -751,12 +757,6 @@ function submitRange(teamId) {
   if (isNaN(minV) || isNaN(maxV)) { alert('Please enter both minimum and maximum values.'); return; }
   if (minV < 0 || maxV > TABLE_WIDTH) { alert(`Range must be within 0 and ${TABLE_WIDTH} cm.`); return; }
   if (minV > maxV) { alert('Minimum must be less than or equal to maximum.'); return; }
-  const width = maxV - minV;
-  const maxWidth = getRoundMaxWidth(gs.round);
-  if (width > maxWidth) {
-    alert(`In round ${gs.round}, range width must be at most ${formatCm(maxWidth)} cm.`);
-    return;
-  }
 
   t.rangeMin = minV;
   t.rangeMax = maxV;
@@ -778,7 +778,7 @@ function doScoring() {
     t.scoreResult = r;
     t.rangeFoundExact = r.exactByRange;
     if (r.penalty) {
-      t.budget = Math.max(0, Math.floor(t.budget * BAD_BUDGET_MULT * 100) / 100);
+      t.budget = Math.max(0, Math.floor(t.budget * (1 - r.budgetPenaltyRate) * 100) / 100);
     } else {
       t.budget = Math.round((t.budget + r.budgetGain) * 100) / 100;
     }
@@ -977,7 +977,7 @@ function renderHeader() {
   const maxWidth = getRoundMaxWidth(gs.round);
   document.getElementById('ball-cost-label').textContent =
     gs.phase === 'play'
-      ? `Next extra clue ball — ${active.map(t => `${t.name}: €${extraBallCost(t).toFixed(2)}`).join(' • ')} • Max range width: ${formatCm(maxWidth)} cm`
+      ? `Next extra clue ball — ${active.map(t => `${t.name}: €${extraBallCost(t).toFixed(2)}`).join(' • ')} • Soft max range width: ${formatCm(maxWidth)} cm`
       : '';
 }
 
@@ -1159,7 +1159,7 @@ function buildPlayControls(t) {
       <span style="font-size:0.75em;color:var(--text-dim)">cm</span>
     </div>
     <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px;">
-      Max range width this round: <strong>${formatCm(maxWidth)} cm</strong>
+      Soft max range width this round: <strong>${formatCm(maxWidth)} cm</strong> (going wider is allowed, but costs budget)
     </div>
     <div class="btn-row">
       <button class="btn-primary btn-sm" onclick="submitRange(${t.id})">Submit Range →</button>
@@ -1212,13 +1212,17 @@ function buildScoringResult(t) {
   const insideStr = r.inside
     ? `<span class="score-good">✓ Inside range</span>`
     : `<span class="score-bad">✗ Outside range</span>`;
-  const widthStr  = r.width <= r.maxWidth
+  const widthStr  = !r.overLimit
     ? `<span class="score-good">${r.width} cm (≤${formatCm(r.maxWidth)} cm ✓)</span>`
-    : `<span class="score-bad">${r.width} cm (>${formatCm(r.maxWidth)} cm ✗)</span>`;
+    : `<span class="score-bad">${r.width} cm (>${formatCm(r.maxWidth)} cm by ${formatCm(r.overBy)} cm ✗)</span>`;
 
   let budgetLine;
   if (r.penalty) {
-    budgetLine = `<span class="score-bad">Budget ×0.70 (−30%)</span>`;
+    if (r.overLimit) {
+      budgetLine = `<span class="score-bad">Budget −${(r.budgetPenaltyRate * 100).toFixed(1)}% (range over limit)</span>`;
+    } else {
+      budgetLine = `<span class="score-bad">Budget ×${BAD_BUDGET_MULT.toFixed(2)} (−${(BAD_BUDGET_PENALTY_RATE * 100).toFixed(0)}%)</span>`;
+    }
   } else {
     budgetLine = `<span class="score-good">Budget +€${r.budgetGain}</span>`;
   }
