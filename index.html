@@ -393,6 +393,26 @@
       font-size: 0.9em;
       color: var(--text-dim);
     }
+    .gameover-ball-positions {
+      margin-top: 14px;
+      text-align: left;
+      background: rgba(12, 24, 30, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 0.8em;
+      color: var(--text-dim);
+    }
+    .gameover-ball-positions .title {
+      color: #c8a872;
+      font-weight: 700;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .gameover-ball-positions .team-line {
+      margin: 8px 0;
+      line-height: 1.45;
+    }
 
     /* ── Confetti canvas ───────────────────────── */
     #confetti-canvas {
@@ -947,12 +967,32 @@ function endGame(winnerIds, reason) {
   });
   html += `<div style="margin-top:8px;">Rounds played: <strong>${gs.round}</strong></div>`;
   html += `</div>`;
+  html += buildFinalBallPositions();
 
   html += `<p style="font-size:0.8em;color:var(--text-dim);margin-top:6px;">
     The Bayesian approach: each clue ball narrows the posterior distribution of the cue's position!
   </p>`;
 
   document.getElementById('gameover-content').innerHTML = html;
+}
+
+function buildFinalBallPositions() {
+  let html = `<div class="gameover-ball-positions">`;
+  html += `<div class="title">Final ball positions</div>`;
+  gs.teams.forEach(t => {
+    const cluePositions = t.clueBalls
+      .map((b, i) => `#${i + 1}: ${b.pos} cm (${b.indicator})`)
+      .join(', ');
+    html += `
+      <div class="team-line">
+        <span class="team-name team-name-${t.id}">${escHtml(t.name)}</span> —
+        Cue: <strong>${t.cuePos} cm</strong><br>
+        Clue balls: ${cluePositions || 'None'}
+      </div>
+    `;
+  });
+  html += `</div>`;
+  return html;
 }
 
 // ════════════════════════════════════════════════
