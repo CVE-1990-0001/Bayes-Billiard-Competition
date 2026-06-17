@@ -413,6 +413,12 @@
       margin: 8px 0;
       line-height: 1.45;
     }
+    .gameover-ball-positions .final-table-visual {
+      margin: 8px 0 4px;
+    }
+    .gameover-ball-positions .final-clue-text {
+      font-size: 0.92em;
+    }
 
     /* ── Confetti canvas ───────────────────────── */
     #confetti-canvas {
@@ -986,13 +992,41 @@ function buildFinalBallPositions() {
     html += `
       <div class="team-line">
         <span class="team-name team-name-${t.id}">${escHtml(t.name)}</span> —
-        Cue: <strong>${t.cuePos} cm</strong><br>
-        Clue balls: ${cluePositions || 'None'}
+        Cue: <strong>${t.cuePos} cm</strong>
+        ${buildFinalTableVisual(t)}
+        <div class="final-clue-text">Clue balls: ${cluePositions || 'None'}</div>
       </div>
     `;
   });
   html += `</div>`;
   return html;
+}
+
+// Build a billiard table visualization (HTML string) revealing the final
+// cue ball and clue ball positions for the game-over screen.
+function buildFinalTableVisual(t) {
+  let ticks = '';
+  for (let i = 0; i <= TABLE_WIDTH; i += 10) {
+    ticks += `<div class="ruler-tick major" style="left:${pct(i)}%"></div>`;
+    ticks += `<div class="ruler-label" style="left:${pct(i)}%">${i}</div>`;
+  }
+
+  let markers = '';
+  t.clueBalls.forEach((b, i) => {
+    const cls = b.indicator === 'LEFT' ? 'left-ball' : b.indicator === 'RIGHT' ? 'right-ball' : 'hit-ball';
+    markers += `<div class="clue-ball-marker ${cls}" style="left:${pct(b.pos)}%" title="Clue ball #${i + 1} at ${b.pos} cm (${b.indicator})"></div>`;
+  });
+  // Cue ball drawn last so it sits on top.
+  markers += `<div class="cue-ball-marker" style="left:${pct(t.cuePos)}%" title="Cue ball at ${t.cuePos} cm"></div>`;
+
+  return `
+    <div class="table-visual final-table-visual">
+      <div class="ruler-container">
+        <div class="ruler"></div>
+        ${ticks}
+        ${markers}
+      </div>
+    </div>`;
 }
 
 // ════════════════════════════════════════════════
