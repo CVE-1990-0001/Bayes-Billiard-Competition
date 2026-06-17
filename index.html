@@ -544,7 +544,7 @@
     <strong style="color:var(--white)">How to play:</strong><br>
     Each team has a billiard table (0–90 cm). A hidden white cue ball is placed at a random position.
     5 red clue balls are thrown — you see only whether each landed <strong>LEFT</strong>, <strong>RIGHT</strong>, or <strong>HIT</strong> relative to the cue.<br>
-    Extra clue ball cost increases on every throw globally (5, 10, 20, 40, ...).<br>
+    Extra clue ball cost increases separately per team (5, 10, 20, 40, ...).<br>
     The cue and clue-ball positions stay fixed across rounds so you can refine ranges progressively.
     Round 1 max range width is 60 cm, then it shrinks by 30% each round.<br>
     Correct ranges earn more budget when they are narrower; wrong ranges cost 30% of budget.<br>
@@ -594,8 +594,15 @@ const CORRECT_GUESS_BONUS = 200;
 
 let gs = null; // game state
 
-function extraBallCost() {
-  return EXTRA_BALL_BASE_COST * Math.pow(2, gs.extraBallThrows);
+function extraBallCost(team) {
+  return EXTRA_BALL_BASE_COST * Math.pow(2, team.extraBallThrowsTotal);
+}
+
+function calcGuessScore(guessPos, cuePos) {
+  const distance = Math.abs(guessPos - cuePos);
+  const normalizedDistance = distance / TABLE_WIDTH; // 0..1
+  const score = Math.round(200 - 400 * Math.pow(normalizedDistance, 1.6)); // non-linear, can go negative
+  return { distance, score };
 }
 
 function randPos() {
@@ -663,6 +670,7 @@ function makeTeam(id, name) {
     extraBallsThisRound: 0,
     rangeFoundExact: false,
     exactScore: 0,
+    extraBallThrowsTotal: 0,
     roundHistory: [],
   };
 }
@@ -673,7 +681,6 @@ function startGame() {
   gs = {
     teams: [makeTeam(0, n0), makeTeam(1, n1)],
     round: 1,
-    extraBallThrows: 0,
     phase: 'play', // play | scoring | guess | gameover
   };
   document.getElementById('setup-screen').style.display = 'none';
@@ -717,13 +724,13 @@ function beginRound() {
 function throwExtraBall(teamId) {
   const t = gs.teams[teamId];
   if (t.eliminated || t.rangeSubmitted) return;
-  const cost = extraBallCost();
+  const cost = extraBallCost(t);
   if (t.budget < cost) {
     alert(`Not enough budget! Extra ball costs €${cost.toFixed(2)} but ${t.name} only has €${t.budget.toFixed(2)}.`);
     return;
   }
   t.budget -= cost;
-  gs.extraBallThrows++;
+  t.extraBallThrowsTotal++;
   t.extraBallsThisRound++;
   const ball = { pos: randPos(), indicator: null };
   ball.indicator = getIndicator(ball.pos, t.cuePos);
@@ -821,7 +828,7 @@ function submitGuess(teamId) {
   t.exactGuess = v;
   t.guessSubmitted = true;
   t.guessCorrect = (v === t.cuePos);
-  t.exactScore = t.guessCorrect ? CORRECT_GUESS_BONUS : 0;
+  t.exactScore = calcGuessScore(v, t.cuePos).score;
   if (t.guessCorrect) {
     t.budget = Math.round((t.budget + CORRECT_GUESS_BONUS) * 100) / 100;
   }
@@ -966,11 +973,11 @@ function renderHeader() {
     guess:   'Final guess — enter the exact cue ball position!',
   };
   document.getElementById('phase-label').textContent = phaseMap[gs.phase] || '';
-  const cost = extraBallCost();
+  const active = gs.teams.filter(t => !t.eliminated);
   const maxWidth = getRoundMaxWidth(gs.round);
   document.getElementById('ball-cost-label').textContent =
     gs.phase === 'play'
-      ? `Next extra clue ball: €${cost.toFixed(2)} • Max range width: ${formatCm(maxWidth)} cm`
+      ? `Next extra clue ball — ${active.map(t => `${t.name}: €${extraBallCost(t).toFixed(2)}`).join(' • ')} • Max range width: ${formatCm(maxWidth)} cm`
       : '';
 }
 
@@ -1131,7 +1138,7 @@ function buildPlayControls(t) {
     return div;
   }
 
-  const cost = extraBallCost();
+  const cost = extraBallCost(t);
   const maxWidth = getRoundMaxWidth(gs.round);
   const canAffordBall = t.budget >= cost;
 
@@ -1228,10 +1235,12 @@ function buildScoringResult(t) {
   if (t.rangeFoundExact) {
     div.innerHTML += `<div class="score-line mt-8"><span class="correct-badge">🎯 Point range exact hit (min=max)! Guess score: +${CORRECT_GUESS_BONUS}</span></div>`;
   } else if (t.guessSubmitted) {
+    const guessScoreText = t.exactScore > 0 ? `+${t.exactScore}` : `${t.exactScore}`;
+    const guessClass = t.exactScore >= 0 ? 'correct-badge' : 'wrong-badge';
     if (t.guessCorrect) {
       div.innerHTML += `<div class="score-line mt-8"><span class="correct-badge">🎯 Exact hit! Guess score: +${CORRECT_GUESS_BONUS}</span></div>`;
     } else {
-      div.innerHTML += `<div class="score-line mt-8"><span class="wrong-badge">✗ Guess: ${t.exactGuess} cm | Guess score: 0</span></div>`;
+      div.innerHTML += `<div class="score-line mt-8"><span class="${guessClass}">✗ Guess: ${t.exactGuess} cm | Guess score: ${guessScoreText}</span></div>`;
     }
   }
 
@@ -1265,7 +1274,7 @@ function buildGuessControls(t) {
       <button class="btn-danger btn-sm" onclick="submitGuess(${t.id})">Guess!</button>
     </div>
     <div style="font-size:0.72em;color:var(--text-dim);margin-top:4px;">
-      Correct guess = +€${CORRECT_GUESS_BONUS} &amp; game ends!
+      Guess score is non-linear by distance (close guesses score higher; far guesses can be negative). Exact hit still wins +€${CORRECT_GUESS_BONUS} and ends the game.
     </div>
   `;
   return div;

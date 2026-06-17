@@ -28,7 +28,7 @@ Each player has their own billiard table (0–90 cm wide). At the start of every
    - 🟡 **HIT** — the clue ball landed exactly on the cue ball.
 2. **Buy extra clue balls** (optional) to gain more information:
    - First extra ball costs **€5**.
-   - Cost doubles on every throw globally (regardless of round): €5, €10, €20, €40, ...
+   - Cost doubles on every throw **per team** (regardless of round): €5, €10, €20, €40, ...
 3. **Submit a range** `[min, max]` (integers, 0–90 cm, with `min ≤ max`) that you believe contains the cue ball.
 4. The hidden cue position and all clue ball positions stay fixed for each team across rounds; rounds are for refining your interval.
 
@@ -65,7 +65,8 @@ A team whose budget drops to **€0 or below** is **eliminated**.
 #### Phase 3 · Guess (exact position)
 After scoring, each active team can guess the **exact integer position** of the cue ball (unless already solved via `min = max`):
 - A **correct guess** awards **+€200** and immediately ends the game — that team wins.
-- An incorrect guess gives no reward or penalty.
+- Guess score depends on distance to the real cue position using a **non-linear** formula.
+- Far guesses can produce a **negative guess score**.
 
 ### End of Game
 The game ends when:
@@ -85,7 +86,7 @@ The game ends when:
 | Correct range at max allowed width | +€0 budget, 50 pts |
 | Correct range narrower than limit | Reward increases linearly with precision |
 | Wrong range or width above round limit | −30% of budget |
-| Exact position guess (`Guess` or `min = max`) | +€200 exact score bonus, game-ending logic applies |
+| Exact position guess (`Guess` or `min = max`) | Exact hit: +€200 budget and game-ending logic; guess score uses non-linear distance curve |
 
 ---
 
@@ -106,4 +107,4 @@ The optimal Bayesian range to submit is the interval `[max LEFT position + 1, mi
 - Pure HTML/CSS/JavaScript — no dependencies, no build step.
 - Open `index.html` in any modern browser to play locally.
 - Table width: **90 cm** (positions 0–90, inclusive — 91 possible integer values).
-- Extra ball cost per throw: `€5 × 2^(totalExtraThrowsSoFar)`.
+- Extra ball cost per throw, per team: `€5 × 2^(thatTeamTotalExtraThrowsSoFar)`.
